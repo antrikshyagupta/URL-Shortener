@@ -3,16 +3,39 @@
 
     async function shortenUrl(req , res){
         const {originalUrl} = req.body ;
-        if(!originalUrl){
-            return res.status(400).json({
+           if (!originalUrl || typeof originalUrl !== "string" || !originalUrl.trim()) {
+        return res.status(400).json({
             message: "Original URL is required"
         });
-        }
+    }
+     let inputUrl = originalUrl.trim();
+         if (!/^https?:\/\//i.test(inputUrl)) {
+    inputUrl = "https://" + inputUrl;
+}
 
+    let parsedUrl;
+      try {
+        parsedUrl = new URL(inputUrl);
+        if (!parsedUrl.hostname.includes(".")) {
+    return res.status(400).json({
+        message: "Invalid domain name"
+    });
+}
+    } catch (err) {
+        return res.status(400).json({
+            message: "Invalid URL"
+        });
+    }
+     if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+        return res.status(400).json({
+            message: "Only HTTP and HTTPS URLs are allowed"
+        });
+    }
         try {
             const shortCode = nanoid(6)
         const newUrl = await urlModel.create({
-            originalUrl ,shortCode
+            originalUrl : inputUrl ,
+            shortCode
         })
 
         
