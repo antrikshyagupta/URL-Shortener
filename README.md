@@ -25,7 +25,7 @@ A lightweight, scalable RESTful URL shortener service built with Node.js, Expres
 - **Development**: `nodemon` (hot reloading)
 
 ### Future Enhancements & Roadmap
-- [ ] **Redirection Endpoint**: `GET /:shortCode` to redirect users and increment click counts.
+- [x] **Redirection Endpoint**: `GET /api/urls/:shortCode` redirects users to the original URL and tracks click counts.
 - [ ] **URL Analytics & Dashboard**: Detailed analytics (clicks over time, geographic data, referrers, device types).
 - [ ] **Custom Aliases**: Allow users to specify custom vanity URLs (e.g., `/my-brand-url`).
 - [ ] **Link Expiration**: Expire short links after a specified TTL or date.
@@ -113,6 +113,28 @@ Content-Type: application/json
   }
 }
 ```
+
+### Redirect to Original URL
+```http
+GET /api/urls/:shortCode
+```
+**Parameters**:
+- `shortCode` *(string, required)*: The unique short code generated for the URL.
+
+**Responses**:
+- **302 Found**: Redirects the client directly to `originalUrl` and increments the click counter (`clicks`).
+- **404 Not Found**:
+  ```json
+  {
+    "message": "URL not found"
+  }
+  ```
+- **500 Internal Server Error**:
+  ```json
+  {
+    "message": "Unable to redirect URL at the moment"
+  }
+  ```
 
 ---
 
