@@ -7,8 +7,11 @@ A lightweight, scalable RESTful URL shortener service built with Node.js, Expres
 ## 📌 Features
 
 - **Shorten Long URLs**: Generates unique, compact alphanumeric keys using `nanoid`.
-- **Redirection & Click Tracking**: Track original URLs, unique short codes, and click statistics.
-- **RESTful API**: Clean route separation following MVC pattern (`routes/`, `controllers/`, `models/`).
+- **URL Validation & Normalization**: Automatically prepends `https://` if protocol is missing, validates domain names and URL structures.
+- **Custom Vanity Aliases**: Create custom short codes with alphanumeric characters, dashes, and underscores (3–30 characters).
+- **Link Expiration (TTL)**: Schedule expiry timestamps (`expiresAt`). Expired URLs automatically respond with HTTP 410 Gone.
+- **Redirection & Click Tracking**: Track original URLs, unique short codes, and click counts on each redirect.
+- **RESTful API**: Clean route separation following the MVC pattern (`routes/`, `controllers/`, `models/`).
 - **MongoDB Persistence**: Schema validation and timestamped record management via Mongoose.
 
 ---
@@ -26,9 +29,9 @@ A lightweight, scalable RESTful URL shortener service built with Node.js, Expres
 
 ### Future Enhancements & Roadmap
 - [x] **Redirection Endpoint**: `GET /api/urls/:shortCode` redirects users to the original URL and tracks click counts.
+- [x] **Custom Aliases**: Allow users to specify custom vanity URLs (e.g., `github-profile`).
+- [x] **Link Expiration**: Expire short links after a specified timestamp with `410 Gone` status.
 - [ ] **URL Analytics & Dashboard**: Detailed analytics (clicks over time, geographic data, referrers, device types).
-- [ ] **Custom Aliases**: Allow users to specify custom vanity URLs (e.g., `/my-brand-url`).
-- [ ] **Link Expiration**: Expire short links after a specified TTL or date.
 - [ ] **Authentication & User Accounts**: User registration and JWT-based auth to manage personal links.
 - [ ] **Rate Limiting & Abuse Protection**: Using Redis or Express rate limiters to prevent bot spam.
 - [ ] **Caching Layer**: Redis cache for high-throughput redirection lookups.
@@ -87,43 +90,91 @@ GET /
 URL Shortener API
 ```
 
+---
+
 ### Shorten a URL
 ```http
 POST /api/urls/shorten
 Content-Type: application/json
 ```
-**Request Body**:
+
+#### Request Body
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `originalUrl` | string | **Yes** | Destination URL (auto-prepends `https://` if omitted). |
+| `customAlias` | string | *Optional* | Custom short code (3–30 chars, alphanumeric, hyphens, underscores). |
+| `expiresAt` | string (ISO Date) | *Optional* | Future expiration date/time (e.g., `2026-12-31T23:59:59.000Z`). |
+
+#### Example Request
 ```json
 {
-  "originalUrl": "https://example.com/very/long/url/path"
+  "originalUrl": "github.com/octocat",
+  "customAlias": "octocat-profile",
+  "expiresAt": "2026-12-31T23:59:59.000Z"
 }
 ```
 
-**Response (201 Created)**:
-```json
-{
-  "message": "URL shortened successfully",
-  "data": {
-    "_id": "673f...",
-    "originalUrl": "https://example.com/very/long/url/path",
-    "shortCode": "abc123",
-    "clicks": 0,
-    "createdAt": "2026-10-23T14:24:00.000Z",
-    "updatedAt": "2026-10-23T14:24:00.000Z"
+#### Responses
+
+- **201 Created**:
+  ```json
+  {
+    "message": "URL shortened successfully",
+    "data": {
+      "_id": "673f...",
+      "originalUrl": "https://github.com/octocat",
+      "shortCode": "octocat-profile",
+      "clicks": 0,
+      "expiresAt": "2026-12-31T23:59:59.000Z",
+      "createdAt": "2026-10-24T02:00:00.000Z",
+      "updatedAt": "2026-10-24T02:00:00.000Z"
+    }
   }
-}
-```
+  ```
+
+- **400 Bad Request**:
+  - Missing/invalid original URL format or protocol.
+  - Invalid custom alias (outside 3–30 characters or invalid characters).
+  - Invalid or past expiration date.
+  ```json
+  {
+    "message": "Alias must be 3-30 characters and contain only letters, numbers, hyphens, or underscores"
+  }
+  ```
+
+- **409 Conflict**:
+  ```json
+  {
+    "message": "Custom alias already exists"
+  }
+  ```
+
+- **500 Internal Server Error**:
+  ```json
+  {
+    "message": "Can't shorten URL at the moment"
+  }
+  ```
+
+---
 
 ### Redirect to Original URL
 ```http
 GET /api/urls/:shortCode
 ```
-**Parameters**:
-- `shortCode` *(string, required)*: The unique short code generated for the URL.
 
-**Responses**:
-- **302 Found**: Redirects the client directly to `originalUrl` and increments the click counter (`clicks`).
-- **404 Not Found**:
+#### Parameters
+- `shortCode` *(string, required)*: The short code or custom alias for the link.
+
+#### Responses
+- **302 Found**: Redirects the client to `originalUrl` and increments `clicks` by 1.
+- **410 Gone**: Link has expired.
+  ```json
+  {
+    "message": "This URL has expired"
+  }
+  ```
+- **404 Not Found**: Short code does not exist.
   ```json
   {
     "message": "URL not found"
@@ -143,19 +194,19 @@ GET /api/urls/:shortCode
 ```
 url-shortener/
 ├── src/
-│   ├── app.js            # Express application setup & middleware
+│   ├── app.js                  # Express application setup & middleware
 │   ├── config/
-│   │   └── db.js         # MongoDB connection config
+│   │   └── db.js               # MongoDB connection config
 │   ├── controllers/
-│   │   └── url.controllers.js  # Controller logic for URL actions
+│   │   └── url.controllers.js  # Controller logic (shorten, redirect, validate)
 │   ├── models/
-│   │   └── url.model.js        # Mongoose URL schema
+│   │   └── url.model.js        # Mongoose URL schema (clicks, expiresAt, etc.)
 │   └── routes/
 │       └── url.routes.js       # Express route handlers
 ├── .gitignore
 ├── package.json
 ├── README.md
-└── server.js             # Entry point / server listener
+└── server.js                   # Entry point / server listener
 ```
 
 ---
