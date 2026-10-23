@@ -24,9 +24,36 @@
         catch(err){
             console.error(err)
             return res.status(500).json({
-                message : "Cant Shorten URL at the momnent"
+                message : "Can't Shorten URL at the moment"
             })
         }
     }
+    
+async function redirectUrl(req, res) {
+    const { shortCode } = req.params;
 
-    module.exports = {shortenUrl};
+    try {
+        const url = await urlModel.findOne({ shortCode });
+
+        if (!url) {
+            return res.status(404).json({
+                message: "URL not found"
+            });
+        }
+
+        url.clicks++;
+        await url.save();
+
+        return res.redirect(url.originalUrl);
+
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({
+            message: "Unable to redirect URL at the moment"
+        });
+    }
+}
+
+        
+
+    module.exports = {shortenUrl ,redirectUrl};
