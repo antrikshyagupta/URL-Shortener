@@ -2,6 +2,7 @@
 const urlModel = require("../models/url.model");
 const { nanoid } = require("nanoid");
 
+//SHORTEN URL FUNCTION
 async function shortenUrl(req, res) {
     const { originalUrl, customAlias  , expiresAt} = req.body;
 
@@ -117,6 +118,7 @@ async function shortenUrl(req, res) {
     }
 }
 
+//REDIRECT URL FUNCTION 
 async function redirectUrl(req, res) {
     const { shortCode} = req.params;
 
@@ -146,4 +148,51 @@ async function redirectUrl(req, res) {
     }
 }
 
-module.exports = { shortenUrl, redirectUrl };
+// FETCH ALL URLS FUNCTION
+async function getUrls(req, res) {
+    try {
+        const pageValue = req.query.page ?? "1";
+        const limitValue = req.query.limit ?? "10";
+
+        if (
+            !/^[1-9]\d*$/.test(pageValue) ||
+            !/^[1-9]\d*$/.test(limitValue) ||
+            Number(limitValue) > 100
+        ) {
+            return res.status(400).json({
+                message: "Page must be positive and limit must be between 1 and 100"
+            });
+        }
+
+        const page = Number(pageValue);
+        const limit = Number(limitValue);
+        const skip = (page - 1) * limit;
+
+        const urls = await urlModel.find()
+            .skip(skip)
+            .limit(limit)
+            .sort({ createdAt: -1 });
+
+        const total = await urlModel.countDocuments();
+
+        return res.status(200).json({
+            message: "URLs fetched successfully",
+            data: urls,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
+    } catch (err) {
+        console.error(err);
+
+        return res.status(500).json({
+            message: "Unable to fetch URLs"
+        });
+    }
+}
+
+
+module.exports = { shortenUrl, redirectUrl , getUrls };

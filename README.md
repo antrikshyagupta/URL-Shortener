@@ -12,6 +12,7 @@ A lightweight, scalable RESTful URL shortener service built with Node.js, Expres
 - **Link Expiration (TTL)**: Schedule expiry timestamps (`expiresAt`). Expired URLs automatically respond with HTTP 410 Gone.
 - **Redirection & Click Tracking**: Track original URLs, unique short codes, and click counts on each redirect.
 - **RESTful API**: Clean route separation following the MVC pattern (`routes/`, `controllers/`, `models/`).
+- **Health Check Endpoint**: Simple base route (`GET /`) to verify API status.
 - **MongoDB Persistence**: Schema validation and timestamped record management via Mongoose.
 
 ---
