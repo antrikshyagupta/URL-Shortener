@@ -1,6 +1,7 @@
-# Dependencies
+# Dependencies & Build outputs
 node_modules/
 package-lock.json
+dist/
 
 # Environment variables
 .env
