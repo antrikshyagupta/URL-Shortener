@@ -1,82 +1,47 @@
-
 const urlModel = require("../models/url.model");
 const { nanoid } = require("nanoid");
+const {
+    validateUrl,
+    validateExpiry
+} = require("../utils/urlValidation");
 
-//SHORTEN URL FUNCTION
+// SHORTEN URL
 async function shortenUrl(req, res) {
-    const { originalUrl, customAlias  , expiresAt} = req.body;
+    const { originalUrl, customAlias, expiresAt } = req.body;
 
-    // Validate original URL input
+    const urlResult = validateUrl(originalUrl);
+
+    if (urlResult.error) {
+        return res.status(400).json({ message: urlResult.error });
+    }
+
     if (
-        !originalUrl ||
-        typeof originalUrl !== "string" ||
-        !originalUrl.trim()
-    ) {
-        return res.status(400).json({
-            message: "Original URL is required"
-        });
-    }
-
-    // Normalize URL
-    let inputUrl = originalUrl.trim();
-
-    if (!/^https?:\/\//i.test(inputUrl)) {
-        inputUrl = "https://" + inputUrl;
-    }
-
-    // Validate URL format
-    let parsedUrl;
-
-    try {
-        parsedUrl = new URL(inputUrl);
-    } catch (err) {
-        return res.status(400).json({
-            message: "Invalid URL"
-        });
-    }
-
-    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-        return res.status(400).json({
-            message: "Only HTTP and HTTPS URLs are allowed"
-        });
-    }
-
-    if (!parsedUrl.hostname.includes(".")) {
-        return res.status(400).json({
-            message: "Invalid domain name"
-        });
-    }
-
-    // Validate custom alias
-    if (customAlias !== undefined) {
-        if (
+        customAlias !== undefined &&
+        (
             typeof customAlias !== "string" ||
             !/^[a-zA-Z0-9_-]{3,30}$/.test(customAlias)
-        ) {
-            return res.status(400).json({
-                message:
-                    "Alias must be 3-30 characters and contain only letters, numbers, hyphens, or underscores"
-            });
-        }
-    }
-    //validate expiration date
-    if (expiresAt !== undefined) {
-    const expiryDate = new Date(expiresAt);
-
-    if (
-        expiresAt === null ||
-        expiresAt === "" ||
-        !Number.isFinite(expiryDate.getTime()) ||
-        expiryDate <= new Date()
+        )
     ) {
         return res.status(400).json({
-            message: "Expiration date must be a valid future date"
+            message: "Alias must be 3-30 characters and contain only letters, numbers, hyphens, or underscores"
         });
     }
-}
+
+    let expiryDate = null;
+
+    if (expiresAt !== undefined) {
+        const expiryResult = validateExpiry(expiresAt);
+
+        if (expiryResult.error) {
+            return res.status(400).json({
+                message: expiryResult.error
+            });
+        }
+
+        expiryDate = expiryResult.value;
+    }
 
     try {
-        // Check alias uniqueness
         if (customAlias) {
             const existingUrl = await urlModel.findOne({
                 shortCode: customAlias
@@ -89,13 +54,10 @@ async function shortenUrl(req, res) {
             }
         }
 
-        // Generate or use custom short code
-        const shortCode = customAlias || nanoid(6);
-
         const newUrl = await urlModel.create({
-            originalUrl: inputUrl,
-            shortCode ,
-            expiresAt : expiresAt ? new Date(expiresAt) : null 
+            originalUrl: urlResult.value,
+            shortCode: customAlias || nanoid(6),
+            expiresAt: expiryDate
         });
 
         return res.status(201).json({
@@ -105,7 +67,6 @@ async function shortenUrl(req, res) {
     } catch (err) {
         console.error(err);
 
-        // Handle MongoDB duplicate-key error
         if (err.code === 11000) {
             return res.status(409).json({
                 message: "Short code already exists. Please try another alias."
@@ -118,23 +79,23 @@ async function shortenUrl(req, res) {
     }
 }
 
-//REDIRECT URL FUNCTION 
+// REDIRECT URL
 async function redirectUrl(req, res) {
-    const { shortCode} = req.params;
+    const { shortCode } = req.params;
 
     try {
         const url = await urlModel.findOne({ shortCode });
 
         if (!url) {
-            return res.status(404).json({
-                message: "URL not found"
+            return res.status(404).json({ message: "URL not found" });
+        }
+
+        if (url.expiresAt && url.expiresAt <= new Date()) {
+            return res.status(410).json({
+                message: "This URL has expired"
             });
         }
-        if (url.expiresAt && url.expiresAt <= new Date()) {
-    return res.status(410).json({
-        message: "This URL has expired"
-    });
-}
+
         url.clicks++;
         await url.save();
 
@@ -148,7 +109,7 @@ async function redirectUrl(req, res) {
     }
 }
 
-// FETCH ALL URLS FUNCTION
+// FETCH URLS WITH PAGINATION
 async function getUrls(req, res) {
     try {
         const pageValue = req.query.page ?? "1";
@@ -168,12 +129,13 @@ async function getUrls(req, res) {
         const limit = Number(limitValue);
         const skip = (page - 1) * limit;
 
-        const urls = await urlModel.find()
-            .skip(skip)
-            .limit(limit)
-            .sort({ createdAt: -1 });
-
-        const total = await urlModel.countDocuments();
+        const [urls, total] = await Promise.all([
+            urlModel.find()
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            urlModel.countDocuments()
+        ]);
 
         return res.status(200).json({
             message: "URLs fetched successfully",
@@ -194,5 +156,124 @@ async function getUrls(req, res) {
     }
 }
 
+// GET URL STATS
+async function getUrlStats(req, res) {
+    try {
+        const url = await urlModel.findOne({
+            shortCode: req.params.shortCode
+        });
 
-module.exports = { shortenUrl, redirectUrl , getUrls };
+        if (!url) {
+            return res.status(404).json({ message: "URL not found" });
+        }
+
+        return res.status(200).json({
+            message: "URL stats fetched successfully",
+            data: {
+                originalUrl: url.originalUrl,
+                shortCode: url.shortCode,
+                totalClicks: url.clicks,
+                createdAt: url.createdAt,
+                expiresAt: url.expiresAt,
+                isExpired: Boolean(
+                    url.expiresAt && url.expiresAt <= new Date()
+                )
+            }
+        });
+    } catch (err) {
+        console.error(err);
+
+        return res.status(500).json({
+            message: "Unable to fetch URL stats"
+        });
+    }
+}
+
+// DELETE URL
+async function deleteUrl(req, res) {
+    try {
+        const url = await urlModel.findOneAndDelete({
+            shortCode: req.params.shortCode
+        });
+
+        if (!url) {
+            return res.status(404).json({ message: "URL not found" });
+        }
+
+        return res.status(200).json({
+            message: "URL deleted successfully"
+        });
+    } catch (err) {
+        console.error(err);
+
+        return res.status(500).json({
+            message: "Unable to delete URL"
+        });
+    }
+}
+
+// UPDATE URL
+async function updateUrl(req, res) {
+    const { shortCode } = req.params;
+    const { originalUrl, expiresAt } = req.body;
+
+    try {
+        if (originalUrl === undefined && expiresAt === undefined) {
+            return res.status(400).json({
+                message: "At least one field is required to update"
+            });
+        }
+
+        const url = await urlModel.findOne({ shortCode });
+
+        if (!url) {
+            return res.status(404).json({ message: "URL not found" });
+        }
+
+        if (originalUrl !== undefined) {
+            const result = validateUrl(originalUrl);
+
+            if (result.error) {
+                return res.status(400).json({
+                    message: result.error
+                });
+            }
+
+            url.originalUrl = result.value;
+        }
+
+        if (expiresAt !== undefined) {
+            const result = validateExpiry(expiresAt, true);
+
+            if (result.error) {
+                return res.status(400).json({
+                    message: result.error
+                });
+            }
+
+            url.expiresAt = result.value;
+        }
+
+        await url.save();
+
+        return res.status(200).json({
+            message: "URL updated successfully",
+            data: url
+        });
+    } catch (err) {
+        console.error(err);
+
+        return res.status(500).json({
+            message: "Unable to update URL"
+        });
+    }
+}
+
+module.exports = {
+    shortenUrl,
+    redirectUrl,
+    getUrls,
+    getUrlStats,
+    deleteUrl,
+    updateUrl
+};
