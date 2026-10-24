@@ -57,7 +57,8 @@ async function shortenUrl(req, res) {
         const newUrl = await urlModel.create({
             originalUrl: urlResult.value,
             shortCode: customAlias || nanoid(6),
-            expiresAt: expiryDate
+            expiresAt: expiryDate ,
+            owner: req.user.id
         });
 
         return res.status(201).json({
@@ -130,11 +131,11 @@ async function getUrls(req, res) {
         const skip = (page - 1) * limit;
 
         const [urls, total] = await Promise.all([
-            urlModel.find()
+            urlModel.find({ owner: req.user.id })
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit),
-            urlModel.countDocuments()
+            urlModel.countDocuments({ owner: req.user.id })
         ]);
 
         return res.status(200).json({
@@ -160,7 +161,8 @@ async function getUrls(req, res) {
 async function getUrlStats(req, res) {
     try {
         const url = await urlModel.findOne({
-            shortCode: req.params.shortCode
+            shortCode: req.params.shortCode,
+            owner: req.user.id
         });
 
         if (!url) {
@@ -193,7 +195,8 @@ async function getUrlStats(req, res) {
 async function deleteUrl(req, res) {
     try {
         const url = await urlModel.findOneAndDelete({
-            shortCode: req.params.shortCode
+            shortCode: req.params.shortCode,
+            owner: req.user.id  
         });
 
         if (!url) {
